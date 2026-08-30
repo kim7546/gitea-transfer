@@ -1,4 +1,15 @@
-﻿[v7.1 HOTFIX]
+﻿
+[v7.2 SPARROW OPTIONAL GATE]
+- Sparrow 기능은 프로젝트별 config의 sparrow.enabled 값으로 ON/OFF 합니다.
+- 기본값 false: 기존 v7.1과 동일하게 Sparrow 호출 없이 00~05 테스트 가능.
+- true: 02에서 allowedAuthorEmails 대상 Commit만 Success 기준점 위에 재생한 임시 전체 프로젝트를 Sparrow Runner로 검사.
+- PASS(Exit 0): Export 계속.
+- 코드 수정 필요(Exit 10): rejected Tag 추가, Claim 삭제, Freeze 유지, Export 중단.
+- 기술 오류(기타 Exit): rejected 처리하지 않고 Freeze/Claim 유지, 같은 02 재실행 가능.
+- rejected Tag: transfer/rejected/<mode>/<sourceBranch>/<freezeId>
+- Sparrow 실제 명령은 sparrow\run-sparrow.cmd에 한 번만 연결한 뒤, 평상시에는 enabled true/false만 변경.
+
+[v7.1 HOTFIX]
 01 Freeze의 신규 Tag 생성 시 존재하지 않는 로컬 Tag 삭제 때문에 중단되던 문제를 수정했습니다.
 브랜치별 독립 상태 구조는 v7과 동일합니다.
 

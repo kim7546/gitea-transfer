@@ -65,7 +65,8 @@ function Get-LatestSuccessTag {
 function Get-ActiveFreezeTag {
     param(
         [string]$FreezePrefix,
-        [string]$SuccessPrefix
+        [string]$SuccessPrefix,
+        [string]$RejectedPrefix
     )
 
     $latestSuccess = Get-LatestSuccessTag $SuccessPrefix
@@ -91,8 +92,15 @@ function Get-ActiveFreezeTag {
         }
 
         $matchingSuccess = "$SuccessPrefix$freezeId"
+        $matchingRejected = "$RejectedPrefix$freezeId"
+
         & git show-ref --tags --verify --quiet "refs/tags/$matchingSuccess"
-        if ($LASTEXITCODE -ne 0) {
+        $hasSuccess = ($LASTEXITCODE -eq 0)
+
+        & git show-ref --tags --verify --quiet "refs/tags/$matchingRejected"
+        $hasRejected = ($LASTEXITCODE -eq 0)
+
+        if (!$hasSuccess -and !$hasRejected) {
             $active.Add($tag)
         }
     }
@@ -221,6 +229,7 @@ function Get-ExternalTransferSettings {
         FreezePrefix = "$([string]$GlobalConfig.tagPrefixes.freeze)$modeKey/$sourceBranch/"
         SuccessPrefix = "$([string]$GlobalConfig.tagPrefixes.success)$modeKey/$sourceBranch/"
         ClaimPrefix = "$([string]$GlobalConfig.tagPrefixes.claim)$modeKey/$sourceBranch/"
+        RejectedPrefix = "$([string]$GlobalConfig.tagPrefixes.rejected)$modeKey/$sourceBranch/"
     }
 }
 
@@ -395,6 +404,181 @@ function Write-CommitInfo {
     }
 }
 
+
+function Get-SparrowEnabled {
+    param([object]$ProjectConfig)
+    if (!$ProjectConfig.sparrow) { return $false }
+    return [bool]$ProjectConfig.sparrow.enabled
+}
+
+function Get-SafeFileName {
+    param([string]$Value)
+    $name = $Value
+    foreach ($c in [System.IO.Path]::GetInvalidFileNameChars()) {
+        $name = $name.Replace([string]$c, "_")
+    }
+    return $name
+}
+
+function Write-SelectedDeveloperLog {
+    param(
+        [object[]]$SelectedCommits,
+        [string]$OutputFile
+    )
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("Selected developers / commits for this transfer")
+    $lines.Add("================================================")
+    $lines.Add("")
+
+    if ($SelectedCommits.Count -eq 0) {
+        $lines.Add("No selected commits.")
+    }
+    else {
+        foreach ($item in $SelectedCommits) {
+            $hash = [string]$item.Hash
+            $email = [string]$item.Email
+            $authorName = (& git show -s --format="%an" $hash).Trim()
+            Assert-GitSuccess "Commit Author 조회 실패: $hash"
+            $subject = (& git show -s --format="%s" $hash).Trim()
+            Assert-GitSuccess "Commit 제목 조회 실패: $hash"
+
+            $lines.Add("Author : $authorName <$email>")
+            $lines.Add("Commit : $hash")
+            $lines.Add("Title  : $subject")
+            $lines.Add("Files  :")
+
+            $files = @(& git show --pretty="" --name-only --no-renames $hash)
+            Assert-GitSuccess "Commit 파일 목록 조회 실패: $hash"
+
+            foreach ($fileObj in $files) {
+                $file = ([string]$fileObj).Trim()
+                if (![string]::IsNullOrWhiteSpace($file)) {
+                    $lines.Add("  - $file")
+                }
+            }
+            $lines.Add("----------------------------------------")
+        }
+    }
+
+    $lines | Set-Content -Encoding UTF8 $OutputFile
+}
+
+function Remove-ClaimTag {
+    param(
+        [string]$Remote,
+        [string]$ClaimTag
+    )
+
+    if (Get-RemoteTagExists $Remote $ClaimTag) {
+        & git push $Remote ":refs/tags/$ClaimTag" | Out-Null
+        Assert-GitSuccess "Remote Claim Tag 삭제 실패: $ClaimTag"
+    }
+    Remove-LocalTagIfExists $ClaimTag
+}
+
+function New-RejectedTag {
+    param(
+        [string]$Remote,
+        [string]$RejectedTag,
+        [string]$TargetCommit,
+        [string]$Message
+    )
+
+    if (Get-RemoteTagExists $Remote $RejectedTag) {
+        Fetch-OneTag $Remote $RejectedTag
+        return
+    }
+
+    Remove-LocalTagIfExists $RejectedTag
+    & git tag -a $RejectedTag $TargetCommit -m $Message
+    Assert-GitSuccess "Rejected Tag 생성 실패"
+
+    & git push $Remote "refs/tags/$RejectedTag" | Out-Null
+    Assert-GitSuccess "Rejected Tag Push 실패"
+}
+
+function Invoke-SparrowRunner {
+    param(
+        [string]$RunnerPath,
+        [string]$ScanDirectory,
+        [string]$ResultDirectory,
+        [string]$ProjectName,
+        [string]$Mode,
+        [string]$SourceBranch,
+        [string]$FreezeId
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RunnerPath)) {
+        throw "global.json의 sparrowRunnerPath가 비어 있습니다."
+    }
+    if (!(Test-Path -LiteralPath $RunnerPath)) {
+        throw "Sparrow Runner가 없습니다: $RunnerPath"
+    }
+
+    New-Item -ItemType Directory -Force -Path $ResultDirectory | Out-Null
+    $runnerLog = Join-Path $ResultDirectory "runner-output.log"
+
+    $runnerArgs = @(
+        $ScanDirectory,
+        $ResultDirectory,
+        $ProjectName,
+        $Mode,
+        $SourceBranch,
+        $FreezeId
+    )
+
+    Write-Host ""
+    Write-Host "===================================================="
+    Write-Host " SPARROW SCAN"
+    Write-Host "===================================================="
+    Write-Host "ScanDir : $ScanDirectory"
+    Write-Host "Result  : $ResultDirectory"
+    Write-Host ""
+
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $RunnerPath @runnerArgs 2>&1 | Tee-Object -FilePath $runnerLog
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+
+    return [int]$exitCode
+}
+
+function Write-SparrowStatus {
+    param(
+        [string]$ResultDirectory,
+        [string]$Status,
+        [int]$ExitCode,
+        [string]$ProjectName,
+        [string]$Mode,
+        [string]$SourceBranch,
+        [string]$FreezeId,
+        [int]$SelectedCommitCount
+    )
+
+    New-Item -ItemType Directory -Force -Path $ResultDirectory | Out-Null
+
+    $statusObject = [ordered]@{
+        projectName = $ProjectName
+        mode = $Mode
+        sourceBranch = $SourceBranch
+        freezeId = $FreezeId
+        status = $Status
+        exitCode = $ExitCode
+        selectedCommitCount = $SelectedCommitCount
+        scannedAt = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK")
+    }
+
+    $statusObject | ConvertTo-Json -Depth 10 |
+        Set-Content -Encoding UTF8 (Join-Path $ResultDirectory "scan-status.json")
+}
+
+
 $ProjectRoot = (Resolve-Path $ProjectRoot).Path.TrimEnd("\")
 $ProjectName = Split-Path $ProjectRoot -Leaf
 $ToolkitRoot = Get-ToolkitRoot
@@ -410,6 +594,7 @@ $ext = Get-ExternalTransferSettings $projectConfig $globalConfig $Mode
 $freezePrefix = $ext.FreezePrefix
 $successPrefix = $ext.SuccessPrefix
 $claimPrefix = $ext.ClaimPrefix
+$rejectedPrefix = $ext.RejectedPrefix
 $remote = $ext.Remote
 $sourceBranch = $ext.SourceBranch
 $tagScope = $ext.TagScope
@@ -422,6 +607,18 @@ $pathSpecs = @(Get-PathSpecs $includePaths $excludeExtensions)
 
 $distRoot = [string]$globalConfig.externalDistRoot
 $projectDistRoot = Join-Path (Join-Path (Join-Path $distRoot $ProjectName) $tagScope) $branchKey
+
+$sparrowEnabled = Get-SparrowEnabled $projectConfig
+$scanRoot = [string]$globalConfig.externalScanRoot
+$sparrowResultRoot = [string]$globalConfig.sparrowResultRoot
+$sparrowRunnerPath = [string]$globalConfig.sparrowRunnerPath
+
+if ([string]::IsNullOrWhiteSpace($scanRoot)) {
+    $scanRoot = Join-Path $ToolkitRoot "scan"
+}
+if ([string]::IsNullOrWhiteSpace($sparrowResultRoot)) {
+    $sparrowResultRoot = Join-Path $ToolkitRoot "results\sparrow"
+}
 
 New-Item -ItemType Directory -Force -Path $projectDistRoot | Out-Null
 
@@ -440,12 +637,14 @@ try {
     Write-Host "Mode    : $tagScope"
     Write-Host "Branch  : $sourceBranch"
     Write-Host "State   : $ProjectName / $stateScope"
+    $sparrowLabel = if ($sparrowEnabled) { "ENABLED" } else { "DISABLED" }
+    Write-Host "Sparrow : $sparrowLabel"
     Write-Host ""
 
     & git fetch $remote --tags --prune
     Assert-GitSuccess "git fetch 실패"
 
-    $freezeTag = Get-ActiveFreezeTag $freezePrefix $successPrefix
+    $freezeTag = Get-ActiveFreezeTag $freezePrefix $successPrefix $rejectedPrefix
     $freezeId = Get-TagId $freezeTag $freezePrefix
     $successTag = Get-LatestSuccessTag $successPrefix
     $fromCommit = Get-TagTarget $successTag
@@ -556,7 +755,21 @@ ClaimedAt=$((Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK"))
     $patchDir = Join-Path $packageDir "patches"
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("gitea-transfer-" + [guid]::NewGuid().ToString("N"))
     $patchTemp = Join-Path $tempRoot "patch-temp"
-    $replayDir = Join-Path $tempRoot "replay"
+    $replayDir = Join-Path (Join-Path (Join-Path (Join-Path $scanRoot $ProjectName) $tagScope) $branchKey) $freezeId
+
+    New-Item -ItemType Directory -Force -Path (Split-Path $replayDir -Parent) | Out-Null
+
+    if (Test-Path -LiteralPath $replayDir) {
+        $oldErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "SilentlyContinue"
+            & git worktree remove --force $replayDir 2>$null | Out-Null
+        }
+        finally {
+            $ErrorActionPreference = $oldErrorActionPreference
+        }
+        Remove-Item -LiteralPath $replayDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 
     New-Item -ItemType Directory -Force -Path $patchDir | Out-Null
     New-Item -ItemType Directory -Force -Path $patchTemp | Out-Null
@@ -570,11 +783,23 @@ ClaimedAt=$((Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK"))
         $seq++
     }
 
+    $developerLog = Join-Path $packageDir "developers.txt"
+    Write-SelectedDeveloperLog $selected $developerLog
+
     $sourceFiles = @()
     $deletedPaths = @()
     $sourceZip = Join-Path $packageDir "source.zip"
 
+    $sparrowStatus = if ($sparrowEnabled) { "PENDING" } else { "SKIPPED_DISABLED" }
+    $sparrowExitCode = 0
+    $sparrowResultDir = ""
+    $sparrowPackageDir = ""
+
     if ($patchFiles.Count -eq 0) {
+        if ($sparrowEnabled) {
+            $sparrowStatus = "SKIPPED_NO_COMMITS"
+        }
+        Write-Host "Sparrow : $sparrowStatus"
         New-EmptyZip $sourceZip
     }
     else {
@@ -612,6 +837,104 @@ ClaimedAt=$((Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK"))
 
 자동 반입을 중단합니다. 반입담당 개발자끼리 의존성을 확인하세요.
 "@
+            }
+
+            if ($sparrowEnabled) {
+                $resultBase = Join-Path (Join-Path (Join-Path (Join-Path $sparrowResultRoot $ProjectName) $tagScope) $branchKey) $freezeId
+                $sparrowResultDir = $resultBase
+                if (Test-Path -LiteralPath $sparrowResultDir) {
+                    $rerunSuffix = Get-Date -Format "HHmmss"
+                    $sparrowResultDir = "$resultBase-rerun-$rerunSuffix"
+                }
+
+                New-Item -ItemType Directory -Force -Path $sparrowResultDir | Out-Null
+                Copy-Item -LiteralPath $developerLog -Destination (Join-Path $sparrowResultDir "developers.txt") -Force
+
+                $sparrowExitCode = Invoke-SparrowRunner `
+                    $sparrowRunnerPath `
+                    $replayDir `
+                    $sparrowResultDir `
+                    $ProjectName `
+                    $tagScope `
+                    $sourceBranch `
+                    $freezeId
+
+                if ($sparrowExitCode -eq 0) {
+                    $sparrowStatus = "PASS"
+                    Write-SparrowStatus $sparrowResultDir $sparrowStatus $sparrowExitCode `
+                        $ProjectName $tagScope $sourceBranch $freezeId $selectedHashes.Count
+
+                    $sparrowPackageDir = Join-Path $packageDir "sparrow"
+                    New-Item -ItemType Directory -Force -Path $sparrowPackageDir | Out-Null
+                    Copy-Item -Path (Join-Path $sparrowResultDir "*") -Destination $sparrowPackageDir -Recurse -Force
+
+                    Write-Host "SPARROW PASS"
+                }
+                elseif ($sparrowExitCode -eq 10) {
+                    $sparrowStatus = "REJECTED"
+                    Write-SparrowStatus $sparrowResultDir $sparrowStatus $sparrowExitCode `
+                        $ProjectName $tagScope $sourceBranch $freezeId $selectedHashes.Count
+
+                    $rejectedTag = "$rejectedPrefix$freezeId"
+                    $rejectedMessage = @"
+Type=REJECTED
+Reason=SPARROW_FINDINGS
+Project=$ProjectName
+Mode=$tagScope
+SourceBranch=$sourceBranch
+BranchKey=$branchKey
+StateScope=$stateScope
+FreezeId=$freezeId
+FreezeCommit=$toCommit
+SelectedCommitCount=$($selectedHashes.Count)
+OperatorName=$operatorName
+OperatorEmail=$operatorEmail
+Machine=$env:COMPUTERNAME
+ResultDirectory=$sparrowResultDir
+RejectedAt=$((Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK"))
+"@
+                    New-RejectedTag $remote $rejectedTag $toCommit $rejectedMessage
+                    Remove-ClaimTag $remote $claimTag
+
+                    if (Test-Path -LiteralPath $packageDir) {
+                        Remove-Item -LiteralPath $packageDir -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+
+                    throw @"
+Sparrow 검사에서 수정 대상이 발견되어 이번 Freeze를 REJECTED 처리했습니다.
+
+Project : $ProjectName
+Branch  : $sourceBranch
+Freeze  : $freezeId
+Result  : $sparrowResultDir
+
+Freeze Tag는 이력으로 유지됩니다.
+Claim Tag는 해제되었습니다.
+개발자가 수정 후 main/대상 브랜치에 Merge하면 새 01 Freeze부터 다시 진행하세요.
+"@
+                }
+                else {
+                    $sparrowStatus = "TECHNICAL_ERROR"
+                    Write-SparrowStatus $sparrowResultDir $sparrowStatus $sparrowExitCode `
+                        $ProjectName $tagScope $sourceBranch $freezeId $selectedHashes.Count
+
+                    if (Test-Path -LiteralPath $packageDir) {
+                        Remove-Item -LiteralPath $packageDir -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+
+                    throw @"
+Sparrow 실행 자체가 정상 완료되지 않았습니다.
+
+ExitCode : $sparrowExitCode
+Result   : $sparrowResultDir
+
+코드 REJECTED로 처리하지 않았습니다.
+현재 Freeze/Claim은 그대로 유지되므로 Sparrow 환경을 수정한 뒤 같은 02를 다시 실행할 수 있습니다.
+"@
+                }
+            }
+            else {
+                Write-Host "Sparrow : DISABLED - 기존 반입 로직만 수행합니다."
             }
 
             $diffArgs = @(
@@ -673,8 +996,10 @@ ClaimedAt=$((Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK"))
     $commitFile = Join-Path $packageDir "commits.txt"
     Write-CommitInfo $selectedHashes $commitFile
 
+    $sparrowPackageResultPath = if ($sparrowPackageDir) { "sparrow" } else { "" }
+
     $manifest = [ordered]@{
-        version = "4.0"
+        version = "4.1"
         projectName = $ProjectName
         tagScope = $tagScope
         stateScope = $stateScope
@@ -699,6 +1024,12 @@ ClaimedAt=$((Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK"))
         patchCount = $patchFiles.Count
         sourceFiles = $sourceFiles
         deletedPaths = $deletedPaths
+        sparrow = [ordered]@{
+            enabled = $sparrowEnabled
+            status = $sparrowStatus
+            exitCode = $sparrowExitCode
+            packageResultPath = $sparrowPackageResultPath
+        }
     }
 
     $manifestFile = Join-Path $packageDir "manifest.json"
@@ -728,6 +1059,7 @@ ClaimedAt=$((Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK"))
     Write-Host "Commits : $($selectedHashes.Count)"
     Write-Host "Files   : $($sourceFiles.Count)"
     Write-Host "Deleted : $($deletedPaths.Count)"
+    Write-Host "Sparrow : $sparrowStatus"
     Write-Host "Package : $packageDir"
     Write-Host ""
 

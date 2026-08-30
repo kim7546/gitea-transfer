@@ -1,9 +1,13 @@
 {
-  "externalDistRoot": "D:\\gitea-transfer\\dist",
-  "internalInboundRoot": "D:\\gitea-transfer\\inbound",
+  "externalDistRoot": "C:\\gitea-transfer\\dist",
+  "internalInboundRoot": "C:\\gitea-transfer\\inbound",
   "tagPrefixes": {
     "freeze": "transfer/freeze/",
     "success": "transfer/success/",
-    "claim": "transfer/claim/"
-  }
+    "claim": "transfer/claim/",
+    "rejected": "transfer/rejected/"
+  },
+  "externalScanRoot": "C:\\gitea-transfer\\scan",
+  "sparrowResultRoot": "C:\\gitea-transfer\\results\\sparrow",
+  "sparrowRunnerPath": "C:\\gitea-transfer\\sparrow\\run-sparrow.cmd"
 }

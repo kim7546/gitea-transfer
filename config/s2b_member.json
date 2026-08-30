@@ -38,5 +38,8 @@
     "mainBranch": "main",
     "importBranchPrefix": "feature/import-",
     "autoPush": true
+  },
+  "sparrow": {
+    "enabled": false
   }
 }

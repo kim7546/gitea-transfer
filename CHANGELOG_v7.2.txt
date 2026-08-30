@@ -1,0 +1,31 @@
+v7.2 - Sparrow optional gate
+============================
+
+1. 프로젝트별 Sparrow ON/OFF 추가
+   config\<project>.json
+     "sparrow": { "enabled": false }
+
+2. 기본값은 false
+   Sparrow 환경이 없어도 기존 00~05 테스트 가능.
+
+3. 02 Claim & Export에 최종 Sparrow Gate 구조 포함
+   - Success 기준 임시 전체 프로젝트 생성
+   - allowedAuthorEmails 대상 Commit만 Patch 적용
+   - Sparrow enabled=true일 때만 Runner 호출
+   - PASS(0): Package 생성 계속
+   - Findings(10): rejected Tag 생성 + Claim 삭제 + Package 중단
+   - Technical error(other): rejected 처리 안 함, Freeze/Claim 유지, 같은 02 재실행 가능
+
+4. rejected Tag 추가
+   transfer/rejected/<mode>/<sourceBranch>/<freezeId>
+   rejected Freeze는 다음 01을 막지 않음.
+
+5. 내부 03 안전장치
+   Sparrow enabled=true이고 Commit이 존재하는 Package는 manifest의 Sparrow status가 PASS여야 Import 가능.
+
+6. 결과/임시 폴더
+   scan:    C:\gitea-transfer\scan\<project>\<mode>\<branchKey>\<freezeId>
+   results: C:\gitea-transfer\results\sparrow\<project>\<mode>\<branchKey>\<freezeId>
+
+7. Sparrow 실제 제품 명령은 sparrow\run-sparrow.cmd의 VENDOR COMMAND 부분에 한 번만 연결.
+   연결 완료 후에는 프로젝트 JSON의 enabled true/false만 변경하여 사용.

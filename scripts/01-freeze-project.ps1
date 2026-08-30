@@ -105,6 +105,7 @@ function Get-ExternalTransferSettings {
         FreezePrefix = "$([string]$GlobalConfig.tagPrefixes.freeze)$modeKey/$sourceBranch/"
         SuccessPrefix = "$([string]$GlobalConfig.tagPrefixes.success)$modeKey/$sourceBranch/"
         ClaimPrefix = "$([string]$GlobalConfig.tagPrefixes.claim)$modeKey/$sourceBranch/"
+        RejectedPrefix = "$([string]$GlobalConfig.tagPrefixes.rejected)$modeKey/$sourceBranch/"
     }
 }
 
@@ -119,7 +120,7 @@ if ([string]::IsNullOrWhiteSpace($FreezeId)) { $FreezeId=Get-Date -Format "yyyyM
 if ($FreezeId -notmatch '^\d{12}$') { throw "FreezeId 형식은 yyyyMMddHHmm 12자리여야 합니다." }
 
 $remote=$ext.Remote; $sourceBranch=$ext.SourceBranch; $tagScope=$ext.TagScope; $branchKey=$ext.BranchKey; $stateScope=$ext.StateScope
-$freezePrefix=$ext.FreezePrefix; $successPrefix=$ext.SuccessPrefix
+$freezePrefix=$ext.FreezePrefix; $successPrefix=$ext.SuccessPrefix; $rejectedPrefix=$ext.RejectedPrefix
 
 Push-Location $ProjectRoot
 try {
@@ -149,8 +150,19 @@ try {
         $fid=Get-TagId $ft $freezePrefix
         if ($fid -gt $successId) {
             $st="$successPrefix$fid"
+            $rt="$rejectedPrefix$fid"
+
             & git show-ref --tags --verify --quiet "refs/tags/$st"
-            if ($LASTEXITCODE -ne 0 -and $fid -ne $FreezeId) { $unfinished += $ft }
+            $hasSuccess = ($LASTEXITCODE -eq 0)
+
+            & git show-ref --tags --verify --quiet "refs/tags/$rt"
+            $hasRejected = ($LASTEXITCODE -eq 0)
+
+            # 완료된 Success 또는 Sparrow FAIL로 종결된 Rejected Freeze는
+            # 새 Freeze 생성을 막지 않는다.
+            if (!$hasSuccess -and !$hasRejected -and $fid -ne $FreezeId) {
+                $unfinished += $ft
+            }
         }
     }
     if ($unfinished.Count -gt 0) { throw "완료되지 않은 이전 Freeze가 있습니다: $($unfinished -join ', ')" }

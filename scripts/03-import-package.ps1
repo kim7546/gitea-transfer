@@ -326,6 +326,19 @@ try {
         }
     }
 
+    if ($manifest.PSObject.Properties.Name -contains "sparrow") {
+        $packageSparrowEnabled = [bool]$manifest.sparrow.enabled
+        $packageSparrowStatus = [string]$manifest.sparrow.status
+
+        if ($packageSparrowEnabled -and [int]$manifest.selectedCommitCount -gt 0 -and $packageSparrowStatus -ne "PASS") {
+            throw "Sparrow가 활성화된 Package인데 PASS 상태가 아닙니다. Status=$packageSparrowStatus"
+        }
+    }
+    else {
+        $packageSparrowEnabled = $false
+        $packageSparrowStatus = "LEGACY_PACKAGE"
+    }
+
     Write-Host ""
     Write-Host "===================================================="
     Write-Host "INTERNAL IMPORT"
@@ -336,6 +349,7 @@ try {
     Write-Host "State   : $ProjectName / $stateScope"
     Write-Host "Freeze  : $($manifest.freezeId)"
     Write-Host "Commits : $($manifest.selectedCommitCount)"
+    Write-Host "Sparrow : $packageSparrowStatus"
     Write-Host ""
 
     Test-PackageChecksums $packageDir
