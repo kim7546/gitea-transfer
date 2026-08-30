@@ -1,7 +1,8 @@
 {
   "projectName": "my-react-app",
   "allowedAuthorEmails": [
-    "YOUR_GIT_AUTHOR_EMAIL@example.com"
+    "kim7546@gmail.com",
+    "kim7546@hotmail.com"
   ],
   "includePaths": [
     "src",
@@ -23,16 +24,16 @@
     "remote": "origin",
     "profiles": {
       "test": {
-        "sourceBranch": "feature-test"
+        "sourceBranch": "feature/feature-dev"
       },
       "prod": {
-        "sourceBranch": "main"
+        "sourceBranch": "master"
       }
     }
   },
   "internal": {
     "remote": "origin",
-    "mainBranch": "main",
+    "mainBranch": "master",
     "importBranchPrefix": "feature/import-",
     "autoPush": true
   },
