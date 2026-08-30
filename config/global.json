@@ -1,0 +1,9 @@
+{
+  "externalDistRoot": "D:\\gitea-transfer\\dist",
+  "internalInboundRoot": "D:\\gitea-transfer\\inbound",
+  "tagPrefixes": {
+    "freeze": "transfer/freeze/",
+    "success": "transfer/success/",
+    "claim": "transfer/claim/"
+  }
+}

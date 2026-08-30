@@ -1,0 +1,63 @@
+﻿{
+    "version":  "4.0",
+    "projectName":  "my-react-app",
+    "tagScope":  "test",
+    "stateScope":  "test/feature/feature-dev",
+    "branchKey":  "feature__feature-dev",
+    "sourceRemote":  "origin",
+    "sourceBranch":  "feature/feature-dev",
+    "freezeId":  "202608292121",
+    "successTag":  "transfer/success/test/feature/feature-dev/202608292052",
+    "freezeTag":  "transfer/freeze/test/feature/feature-dev/202608292121",
+    "claimTag":  "transfer/claim/test/feature/feature-dev/202608292121",
+    "fromCommit":  "803ea08b49ff4840a258a75913373889c4793e3b",
+    "toCommit":  "139c35321aa55aaa7d46d0da227beb8b03953473",
+    "operatorName":  "Chulyong Kim",
+    "operatorEmail":  "kim7546@gmail.com",
+    "operatorMachine":  "KIMCHULYONGXPS",
+    "createdAt":  "2026-08-29T21:22:15+09:00",
+    "allowedAuthorEmails":  [
+                                "kim7546@gmail.com",
+                                "kim7546@hotmail.com"
+                            ],
+    "includePaths":  [
+                         "src",
+                         "server",
+                         "public",
+                         "package.json",
+                         "package-lock.json",
+                         "vite.config.ts",
+                         "tsconfig.json",
+                         "tsconfig.app.json",
+                         "tsconfig.node.json"
+                     ],
+    "excludeExtensions":  [
+                              ".log",
+                              ".tmp",
+                              ".bak"
+                          ],
+    "selectedCommitCount":  2,
+    "selectedCommits":  [
+                            "48cfb31636ccdbad7b3c8dacfff1a4e831f28f09",
+                            "139c35321aa55aaa7d46d0da227beb8b03953473"
+                        ],
+    "patchCount":  2,
+    "sourceFiles":  [
+                        "server/src/app.ts",
+                        "server/src/clients/KoreaInvestmentClient.ts",
+                        "server/src/config/env.ts",
+                        "server/src/routes/market.routes.ts",
+                        "server/src/services/MarketOverviewService.ts",
+                        "src/api/BffMarketDataProvider.ts",
+                        "src/api/MockMarketDataProvider.ts",
+                        "src/components/dashboard/DashboardHoldingsTable.tsx",
+                        "src/components/dashboard/MarketOverview.tsx",
+                        "src/pages/HomePage.tsx",
+                        "src/services/market-service.ts",
+                        "src/types/dashboard-data.ts",
+                        "src/types/market.ts"
+                    ],
+    "deletedPaths":  [
+
+                     ]
+}

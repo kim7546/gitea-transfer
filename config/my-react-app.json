@@ -1,0 +1,40 @@
+{
+  "projectName": "my-react-app",
+  "allowedAuthorEmails": [
+    "kim7546@gmail.com",
+	"kim7546@hotmail.com"
+  ],
+  "includePaths": [
+    "src",
+    "server",
+    "public",
+    "package.json",
+    "package-lock.json",
+    "vite.config.ts",
+    "tsconfig.json",
+    "tsconfig.app.json",
+    "tsconfig.node.json"
+  ],
+  "excludeExtensions": [
+    ".log",
+    ".tmp",
+    ".bak"
+  ],
+  "external": {
+    "remote": "origin",
+    "profiles": {
+      "test": {
+        "sourceBranch": "feature/feature-dev"
+      },
+      "prod": {
+        "sourceBranch": "master"
+      }
+    }
+  },
+  "internal": {
+    "remote": "origin",
+    "mainBranch": "master",
+    "importBranchPrefix": "feature/import-",
+    "autoPush": true
+  }
+}

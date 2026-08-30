@@ -1,0 +1,7 @@
+v7.1 hotfix
+
+- 01 Freeze: remote Freeze Tag가 없을 때 존재하지 않는 로컬 Tag를 무조건 삭제하던 버그 수정
+- 로컬 Tag는 존재 여부를 확인한 뒤에만 삭제
+- 02 Claim/Export의 Claim push race 및 git am 충돌 처리에서 Windows PowerShell $ErrorActionPreference=Stop로 인한 조기 종료 방지
+- 02/04/05의 Claim local cleanup도 동일하게 안전 처리
+- Project + Mode + SourceBranch 독립 상태 구조(v7)는 그대로 유지

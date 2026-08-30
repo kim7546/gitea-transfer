@@ -1,0 +1,42 @@
+{
+  "projectName": "s2b_buy",
+  "allowedAuthorEmails": [
+    "transfer-dev1@company.com",
+    "transfer-dev2@company.com",
+    "transfer-dev3@company.com",
+    "developer4@company.com",
+    "developer5@company.com"
+  ],
+  "includePaths": [
+    "src/main/java",
+    "src/main/resources",
+    "src/test/java",
+    "build.gradle",
+    "settings.gradle",
+    "gradlew",
+    "gradlew.bat"
+  ],
+  "excludeExtensions": [
+    ".log",
+    ".class",
+    ".tmp",
+    ".bak"
+  ],
+  "external": {
+    "remote": "origin",
+    "profiles": {
+      "test": {
+        "sourceBranch": "feature/transfer-test"
+      },
+      "prod": {
+        "sourceBranch": "main"
+      }
+    }
+  },
+  "internal": {
+    "remote": "origin",
+    "mainBranch": "main",
+    "importBranchPrefix": "feature/import-",
+    "autoPush": true
+  }
+}

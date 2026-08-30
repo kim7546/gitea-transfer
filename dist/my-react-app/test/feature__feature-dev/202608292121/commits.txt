@@ -1,0 +1,14 @@
+﻿Commit : 48cfb31636ccdbad7b3c8dacfff1a4e831f28f09
+Author : Chulyong Kim <kim7546@gmail.com>
+AuthorDate : 2026-08-29T21:19:33+09:00
+Committer : Chulyong Kim <kim7546@gmail.com>
+Title : 대시보드 지수 보완
+Body : 
+----------------------------------------
+Commit : 139c35321aa55aaa7d46d0da227beb8b03953473
+Author : Chulyong Kim <kim7546@gmail.com>
+AuthorDate : 2026-08-29T21:21:40+09:00
+Committer : Chulyong Kim <kim7546@gmail.com>
+Title : 대시보드 보유종목 보안
+Body : 
+----------------------------------------

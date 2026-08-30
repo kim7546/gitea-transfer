@@ -1,0 +1,10 @@
+v7 변경 요약
+============
+1. 상태 키를 Project + Mode + sourceBranch로 변경.
+2. Tag namespace에 sourceBranch 포함.
+3. TEST feature-dev / TEST feature-test / PROD main을 완전 독립 처리.
+4. Package 경로에 branchKey 포함.
+5. 내부 import branch명에 branchKey 포함.
+6. 기존 v6의 branch 미포함 Tag는 v7 상태 판정에서 제외.
+7. Windows BAT에 UTF-8 code page 설정 추가.
+8. config/my-react-app.json 집 GitHub 테스트 예제 추가.
