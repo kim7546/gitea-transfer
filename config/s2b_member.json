@@ -1,22 +1,15 @@
 {
   "projectName": "s2b_member",
   "allowedAuthorEmails": [
-    "transfer-dev1@company.com",
-    "transfer-dev2@company.com",
-    "transfer-dev3@company.com",
-    "developer4@company.com",
-    "developer5@company.com"
+    "kw010150@ktcu.or.kr"
   ],
   "includePaths": [
     "src/main/java",
-    "src/main/resources",
-    "src/test/java",
-    "build.gradle",
-    "settings.gradle",
-    "gradlew",
-    "gradlew.bat"
+    "src/main/resources"
   ],
   "excludeExtensions": [
+    ".txt",
+    ".md",
     ".log",
     ".class",
     ".tmp",
@@ -26,7 +19,7 @@
     "remote": "origin",
     "profiles": {
       "test": {
-        "sourceBranch": "feature/transfer-test"
+        "sourceBranch": "feature/kw010150"
       },
       "prod": {
         "sourceBranch": "main"
