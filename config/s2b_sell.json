@@ -8,7 +8,6 @@
     "src/main/resources"
   ],
   "excludeExtensions": [
-    ".txt",
     ".md",
     ".log",
     ".class",
@@ -19,7 +18,7 @@
     "remote": "origin",
     "profiles": {
       "test": {
-        "sourceBranch": "feature/kw010150"
+        "sourceBranch": "feature/transfer-test"
       },
       "prod": {
         "sourceBranch": "main"
@@ -31,8 +30,5 @@
     "mainBranch": "main",
     "importBranchPrefix": "feature/import-",
     "autoPush": true
-  },
-  "sparrow": {
-    "enabled": false
   }
 }

@@ -4,10 +4,6 @@
   "tagPrefixes": {
     "freeze": "transfer/freeze/",
     "success": "transfer/success/",
-    "claim": "transfer/claim/",
-    "rejected": "transfer/rejected/"
-  },
-  "externalScanRoot": "C:\\workspace\\gitea-transfer\\scan",
-  "sparrowResultRoot": "C:\\workspace\\gitea-transfer\\results\\sparrow",
-  "sparrowRunnerPath": "C:\\workspace\\gitea-transfer\\sparrow\\run-sparrow.cmd"
+    "claim": "transfer/claim/"
+  }
 }

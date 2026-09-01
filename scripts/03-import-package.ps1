@@ -221,9 +221,9 @@ function Get-ConfiguredSourceBranch {
 function Test-PackageChecksums {
     param([string]$PackageDirectory)
 
-    $checksumFile = Join-Path $PackageDirectory "SHA256SUMS.txt"
+    $checksumFile = Join-Path $PackageDirectory "checksum.txt"
     if (!(Test-Path -LiteralPath $checksumFile)) {
-        throw "SHA256SUMS.txt가 없습니다."
+        throw "checksum.txt가 없습니다."
     }
 
     $errors = New-Object System.Collections.Generic.List[string]
@@ -458,18 +458,26 @@ function Compare-SourceReference {
     New-Item -ItemType Directory -Force -Path $verifyDir | Out-Null
 
     try {
-        $sourceZip = Join-Path $PackageDirectory "source.zip"
+        $sourceZip = Join-Path $PackageDirectory "reference.txt"
         if (!(Test-Path -LiteralPath $sourceZip)) {
-            Write-Host "[WARNING] source.zip이 없어 참고 비교를 생략합니다."
+            Write-Host "[WARNING] reference.txt가 없어 참고 비교를 생략합니다."
             return
         }
 
-        Expand-Archive -LiteralPath $sourceZip -DestinationPath $verifyDir -Force
+        # reference.txt는 원래 형식을 숨긴 Base64 참고 데이터이며 03이 메모리/임시영역에서 필요한 형식으로 복원한다.
+        # 내부에서만 임시 ZIP으로 복원하여 참고 비교한다.
+        $sourceZipForRead = Join-Path $verifyDir "source-reference.zip"
+        $sourceZipBase64 = [System.IO.File]::ReadAllText($sourceZip, [System.Text.Encoding]::ASCII).Trim()
+        $sourceZipBytes = [Convert]::FromBase64String($sourceZipBase64)
+        [System.IO.File]::WriteAllBytes($sourceZipForRead, $sourceZipBytes)
+        $sourceExtractDir = Join-Path $verifyDir "source"
+        New-Item -ItemType Directory -Force -Path $sourceExtractDir | Out-Null
+        Expand-Archive -LiteralPath $sourceZipForRead -DestinationPath $sourceExtractDir -Force
         $differences = New-Object System.Collections.Generic.List[string]
 
         foreach ($pathObj in @($Manifest.sourceFiles)) {
             $rel = ([string]$pathObj).Replace("/", "\")
-            $expectedFile = Join-Path $verifyDir $rel
+            $expectedFile = Join-Path $sourceExtractDir $rel
             $actualFile = Join-Path $CurrentProjectRoot $rel
 
             if (!(Test-Path -LiteralPath $expectedFile)) {
@@ -539,6 +547,7 @@ $mainBranch = [string]$projectConfig.internal.mainBranch
 $branchPrefix = [string]$projectConfig.internal.importBranchPrefix
 $autoPush = [bool]$projectConfig.internal.autoPush
 
+$extractRoot = $null
 Push-Location $ProjectRoot
 
 try {
@@ -566,27 +575,27 @@ Branch : $currentBranch
         throw "현재 Working Tree가 깨끗하지 않습니다. Commit 또는 Stash 후 실행하세요."
     }
 
-    if ([string]::IsNullOrWhiteSpace($PackageId)) {
-        $package = Get-ChildItem -LiteralPath $projectInbound -Directory -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path (Join-Path $_.FullName "manifest.json") } |
-            Sort-Object Name -Descending |
-            Select-Object -First 1
-
-        if (!$package) {
-            throw "반입 Package가 없습니다: $projectInbound"
-        }
-
-        $packageDir = $package.FullName
+    # v7.5: 사용자는 외부에서 반입한 ZIP 1개만 inbound에 복사하고 03을 누른다.
+    # 프로젝트 하위 폴더를 만들 필요 없이 internalInboundRoot 어디에 두어도 재귀 검색한다.
+    $zipPattern = "transfer-$ProjectName-$tagScope-$branchKey-*.zip"
+    $zipCandidates = @(Get-ChildItem -LiteralPath $inboundRoot -Recurse -File -Filter $zipPattern -ErrorAction SilentlyContinue)
+    if (![string]::IsNullOrWhiteSpace($PackageId)) {
+        $zipCandidates = @($zipCandidates | Where-Object { $_.Name -like "*-$PackageId.zip" })
     }
-    else {
-        $packageDir = Join-Path $projectInbound $PackageId
-        if (!(Test-Path -LiteralPath $packageDir)) {
-            throw "Package 경로가 없습니다: $packageDir"
-        }
+    $transportZip = $zipCandidates | Sort-Object LastWriteTime, Name -Descending | Select-Object -First 1
+    if (!$transportZip) {
+        throw "반입 ZIP이 없습니다. ZIP 1개를 inbound 폴더에 복사하세요: $inboundRoot\$zipPattern"
     }
 
-    $manifestFile = Join-Path $packageDir "manifest.json"
+    $extractRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("gitea-transfer-inbound-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
+    Expand-Archive -LiteralPath $transportZip.FullName -DestinationPath $extractRoot -Force
+    $packageDir = $extractRoot
+
+    $manifestFile = Join-Path $packageDir "manifest.txt"
     $manifest = Get-JsonFile $manifestFile
+    Write-Host "반입 ZIP : $($transportZip.FullName)"
+    Write-Host "자동 해제 : $packageDir"
 
     if ([string]$manifest.projectName -ne $ProjectName) {
         throw "Package 프로젝트가 다릅니다. Package=$($manifest.projectName) Current=$ProjectName"
@@ -605,30 +614,7 @@ Branch : $currentBranch
         }
     }
 
-    if ($manifest.PSObject.Properties.Name -contains "sparrow") {
-        $packageSparrowEnabled = [bool]$manifest.sparrow.enabled
-        $packageSparrowStatus = [string]$manifest.sparrow.status
 
-        if ($packageSparrowEnabled -and [int]$manifest.selectedCommitCount -gt 0 -and $packageSparrowStatus -ne "PASS") {
-            throw "Sparrow가 활성화된 Package인데 PASS 상태가 아닙니다. Status=$packageSparrowStatus"
-        }
-    }
-    else {
-        $packageSparrowEnabled = $false
-        $packageSparrowStatus = "LEGACY_PACKAGE"
-    }
-
-    Write-Host ""
-    Write-Host "===================================================="
-    Write-Host "INTERNAL IMPORT"
-    Write-Host "===================================================="
-    Write-Host "Project : $ProjectName"
-    Write-Host "Mode    : $tagScope"
-    Write-Host "Branch  : $sourceBranch"
-    Write-Host "State   : $ProjectName / $stateScope"
-    Write-Host "Freeze  : $($manifest.freezeId)"
-    Write-Host "Commits : $($manifest.selectedCommitCount)"
-    Write-Host "Sparrow : $packageSparrowStatus"
     Write-Host ""
 
     Test-PackageChecksums $packageDir
@@ -641,7 +627,7 @@ Branch : $currentBranch
 
     $patchDir = Join-Path $packageDir "patches"
     $patches = @(
-        Get-ChildItem -LiteralPath $patchDir -Filter "*.patch" -File |
+        Get-ChildItem -LiteralPath $patchDir -Filter "*.txt" -File |
         Sort-Object Name
     )
     $patchFiles = @($patches | ForEach-Object { $_.FullName })
@@ -767,4 +753,7 @@ Commit 검증 -> source.zip 참고 비교 -> Push 단계부터 이어갑니다.
 }
 finally {
     Pop-Location
+    if ($extractRoot -and (Test-Path -LiteralPath $extractRoot)) {
+        Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }

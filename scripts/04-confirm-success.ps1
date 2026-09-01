@@ -65,8 +65,7 @@ function Get-LatestSuccessTag {
 function Get-ActiveFreezeTag {
     param(
         [string]$FreezePrefix,
-        [string]$SuccessPrefix,
-        [string]$RejectedPrefix
+        [string]$SuccessPrefix
     )
 
     $latestSuccess = Get-LatestSuccessTag $SuccessPrefix
@@ -92,15 +91,8 @@ function Get-ActiveFreezeTag {
         }
 
         $matchingSuccess = "$SuccessPrefix$freezeId"
-        $matchingRejected = "$RejectedPrefix$freezeId"
-
         & git show-ref --tags --verify --quiet "refs/tags/$matchingSuccess"
-        $hasSuccess = ($LASTEXITCODE -eq 0)
-
-        & git show-ref --tags --verify --quiet "refs/tags/$matchingRejected"
-        $hasRejected = ($LASTEXITCODE -eq 0)
-
-        if (!$hasSuccess -and !$hasRejected) {
+        if ($LASTEXITCODE -ne 0) {
             $active.Add($tag)
         }
     }
@@ -229,7 +221,6 @@ function Get-ExternalTransferSettings {
         FreezePrefix = "$([string]$GlobalConfig.tagPrefixes.freeze)$modeKey/$sourceBranch/"
         SuccessPrefix = "$([string]$GlobalConfig.tagPrefixes.success)$modeKey/$sourceBranch/"
         ClaimPrefix = "$([string]$GlobalConfig.tagPrefixes.claim)$modeKey/$sourceBranch/"
-        RejectedPrefix = "$([string]$GlobalConfig.tagPrefixes.rejected)$modeKey/$sourceBranch/"
     }
 }
 
@@ -286,7 +277,6 @@ $ext = Get-ExternalTransferSettings $projectConfig $globalConfig $Mode
 $freezePrefix = $ext.FreezePrefix
 $successPrefix = $ext.SuccessPrefix
 $claimPrefix = $ext.ClaimPrefix
-$rejectedPrefix = $ext.RejectedPrefix
 $remote = $ext.Remote
 $sourceBranch = $ext.SourceBranch
 $tagScope = $ext.TagScope
@@ -299,7 +289,7 @@ try {
     & git fetch $remote --tags --prune
     Assert-GitSuccess "git fetch 실패"
 
-    $freezeTag = Get-ActiveFreezeTag $freezePrefix $successPrefix $rejectedPrefix
+    $freezeTag = Get-ActiveFreezeTag $freezePrefix $successPrefix
     $freezeId = Get-TagId $freezeTag $freezePrefix
     $freezeCommit = Get-TagTarget $freezeTag
 

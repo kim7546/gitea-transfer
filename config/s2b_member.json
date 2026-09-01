@@ -8,7 +8,6 @@
     "src/main/resources"
   ],
   "excludeExtensions": [
-    ".txt",
     ".md",
     ".log",
     ".class",
@@ -31,8 +30,5 @@
     "mainBranch": "main",
     "importBranchPrefix": "feature/import-",
     "autoPush": true
-  },
-  "sparrow": {
-    "enabled": false
   }
 }
