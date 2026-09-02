@@ -1,5 +1,6 @@
-{
+﻿{
   "projectName": "s2b_member",
+  "partCode": "MY_PART",
   "allowedAuthorEmails": [
     "kw010150@ktcu.or.kr"
   ],

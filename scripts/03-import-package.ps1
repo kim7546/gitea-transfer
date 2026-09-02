@@ -197,6 +197,29 @@ function Get-TagMessage {
 }
 
 
+function Get-PartSettings {
+    param([object]$ProjectConfig)
+
+    $code = [string]$ProjectConfig.partCode
+    if ([string]::IsNullOrWhiteSpace($code)) {
+        throw "프로젝트 config의 partCode가 비어 있습니다. 이 PC/Toolkit에서 사용하는 내 파트 코드 1개만 설정하세요."
+    }
+    $code = $code.Trim()
+    if ($code -notmatch '^[A-Za-z0-9._-]+$') {
+        throw "partCode는 영문/숫자/점/밑줄/하이픈만 사용할 수 있습니다: $code"
+    }
+
+    $allowed = @($ProjectConfig.allowedAuthorEmails)
+    if ($allowed.Count -eq 0) {
+        throw "프로젝트 config의 allowedAuthorEmails가 비어 있습니다. 내 파트 반입 대상 사용자 Email을 등록하세요."
+    }
+
+    return [pscustomobject]@{
+        Code = $code
+        AllowedAuthorEmails = $allowed
+    }
+}
+
 function Get-BranchKey {
     param([string]$BranchName)
     if ([string]::IsNullOrWhiteSpace($BranchName)) { throw "BranchName이 비어 있습니다." }
@@ -538,10 +561,12 @@ $projectConfig = Get-JsonFile (Join-Path $ToolkitRoot "config\$ProjectName.json"
 
 $inboundRoot = [string]$globalConfig.internalInboundRoot
 $tagScope = $Mode.Trim().ToLowerInvariant()
+$part = Get-PartSettings $projectConfig
+$partCodeResolved = [string]$part.Code
 $sourceBranch = Get-ConfiguredSourceBranch $projectConfig $Mode
 $branchKey = Get-BranchKey $sourceBranch
-$stateScope = "$tagScope/$sourceBranch"
-$projectInbound = Join-Path (Join-Path (Join-Path $inboundRoot $ProjectName) $tagScope) $branchKey
+$stateScope = "$tagScope/$partCodeResolved/$sourceBranch"
+$projectInbound = Join-Path (Join-Path (Join-Path (Join-Path $inboundRoot $ProjectName) $tagScope) $partCodeResolved) $branchKey
 $remote = [string]$projectConfig.internal.remote
 $mainBranch = [string]$projectConfig.internal.mainBranch
 $branchPrefix = [string]$projectConfig.internal.importBranchPrefix
@@ -577,7 +602,7 @@ Branch : $currentBranch
 
     # v7.5: 사용자는 외부에서 반입한 ZIP 1개만 inbound에 복사하고 03을 누른다.
     # 프로젝트 하위 폴더를 만들 필요 없이 internalInboundRoot 어디에 두어도 재귀 검색한다.
-    $zipPattern = "transfer-$ProjectName-$tagScope-$branchKey-*.zip"
+    $zipPattern = "transfer-$ProjectName-$tagScope-$partCodeResolved-$branchKey-*.zip"
     $zipCandidates = @(Get-ChildItem -LiteralPath $inboundRoot -Recurse -File -Filter $zipPattern -ErrorAction SilentlyContinue)
     if (![string]::IsNullOrWhiteSpace($PackageId)) {
         $zipCandidates = @($zipCandidates | Where-Object { $_.Name -like "*-$PackageId.zip" })
@@ -596,6 +621,7 @@ Branch : $currentBranch
     $manifest = Get-JsonFile $manifestFile
     Write-Host "반입 ZIP : $($transportZip.FullName)"
     Write-Host "자동 해제 : $packageDir"
+    Write-Host "Part     : $partCodeResolved"
 
     if ([string]$manifest.projectName -ne $ProjectName) {
         throw "Package 프로젝트가 다릅니다. Package=$($manifest.projectName) Current=$ProjectName"
@@ -604,6 +630,12 @@ Branch : $currentBranch
         if ([string]$manifest.tagScope -ne $tagScope) {
             throw "Package tagScope가 현재 설정과 다릅니다. Package=$($manifest.tagScope) Config=$tagScope"
         }
+    }
+    if (!($manifest.PSObject.Properties.Name -contains "partCode")) {
+        throw "Package에 partCode가 없습니다. v7.6.1 파트별 Export ZIP인지 확인하세요."
+    }
+    if ([string]$manifest.partCode -ne $partCodeResolved) {
+        throw "Package partCode가 현재 선택과 다릅니다. Package=$($manifest.partCode) Config=$partCodeResolved"
     }
     if ([string]$manifest.sourceBranch -ne $sourceBranch) {
         throw "Package sourceBranch가 현재 설정과 다릅니다. Package=$($manifest.sourceBranch) Config=$sourceBranch"
@@ -636,7 +668,7 @@ Branch : $currentBranch
     & git fetch $remote --prune
     Assert-GitSuccess "내부 GitLab fetch 실패"
 
-    $importBranch = "$branchPrefix$ProjectName-$tagScope-$branchKey-$($manifest.freezeId)"
+    $importBranch = "$branchPrefix$ProjectName-$tagScope-$partCodeResolved-$branchKey-$($manifest.freezeId)"
     $remoteMainRef = "refs/remotes/$remote/$mainBranch"
 
     & git show-ref --verify --quiet $remoteMainRef

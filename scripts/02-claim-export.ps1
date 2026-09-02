@@ -169,6 +169,29 @@ function New-EmptyZip {
 }
 
 
+function Get-PartSettings {
+    param([object]$ProjectConfig)
+
+    $code = [string]$ProjectConfig.partCode
+    if ([string]::IsNullOrWhiteSpace($code)) {
+        throw "프로젝트 config의 partCode가 비어 있습니다. 이 PC/Toolkit에서 사용하는 내 파트 코드 1개만 설정하세요."
+    }
+    $code = $code.Trim()
+    if ($code -notmatch '^[A-Za-z0-9._-]+$') {
+        throw "partCode는 영문/숫자/점/밑줄/하이픈만 사용할 수 있습니다: $code"
+    }
+
+    $allowed = @($ProjectConfig.allowedAuthorEmails)
+    if ($allowed.Count -eq 0) {
+        throw "프로젝트 config의 allowedAuthorEmails가 비어 있습니다. 내 파트 반입 대상 사용자 Email을 등록하세요."
+    }
+
+    return [pscustomobject]@{
+        Code = $code
+        AllowedAuthorEmails = $allowed
+    }
+}
+
 function Get-BranchKey {
     param([string]$BranchName)
     if ([string]::IsNullOrWhiteSpace($BranchName)) { throw "BranchName이 비어 있습니다." }
@@ -205,22 +228,24 @@ function Get-ExternalTransferSettings {
         throw "external.profiles.$modeKey.sourceBranch 설정이 없습니다."
     }
 
-    # 핵심: 상태 키는 Project + Mode + SourceBranch 이다.
-    # Git Tag에는 실제 브랜치명을 그대로 namespace로 사용하고,
-    # Windows 폴더/내부 import branch에는 안전한 BranchKey를 사용한다.
+    # v7.6.1: 상태 키는 Project + Mode + config.partCode + SourceBranch 이다.
+    $part = Get-PartSettings $ProjectConfig
+    $partCodeResolved = [string]$part.Code
     $tagScope = $modeKey
     $branchKey = Get-BranchKey $sourceBranch
-    $stateScope = "$modeKey/$sourceBranch"
+    $stateScope = "$modeKey/$partCodeResolved/$sourceBranch"
 
     return [pscustomobject]@{
         Remote = $remote
         SourceBranch = $sourceBranch
         BranchKey = $branchKey
+        PartCode = $partCodeResolved
+        AllowedAuthorEmails = @($part.AllowedAuthorEmails)
         TagScope = $tagScope
         StateScope = $stateScope
-        FreezePrefix = "$([string]$GlobalConfig.tagPrefixes.freeze)$modeKey/$sourceBranch/"
-        SuccessPrefix = "$([string]$GlobalConfig.tagPrefixes.success)$modeKey/$sourceBranch/"
-        ClaimPrefix = "$([string]$GlobalConfig.tagPrefixes.claim)$modeKey/$sourceBranch/"
+        FreezePrefix = "$([string]$GlobalConfig.tagPrefixes.freeze)$modeKey/$partCodeResolved/$sourceBranch/"
+        SuccessPrefix = "$([string]$GlobalConfig.tagPrefixes.success)$modeKey/$partCodeResolved/$sourceBranch/"
+        ClaimPrefix = "$([string]$GlobalConfig.tagPrefixes.claim)$modeKey/$partCodeResolved/$sourceBranch/"
     }
 }
 
@@ -288,7 +313,7 @@ function Get-SelectedCommits {
     }
 
     if ($allowed.Count -eq 0) {
-        throw "allowedAuthorEmails가 비어 있습니다. 프로젝트별 반입 대상 개발자 Email을 설정하세요."
+        throw "allowedAuthorEmails가 비어 있습니다. 해당 PartCode의 반입 대상 개발자 Email을 config.parts에 설정하세요."
     }
 
     $args = @(
@@ -413,15 +438,16 @@ $claimPrefix = $ext.ClaimPrefix
 $remote = $ext.Remote
 $sourceBranch = $ext.SourceBranch
 $tagScope = $ext.TagScope
+$partCodeResolved = $ext.PartCode
 $branchKey = $ext.BranchKey
 $stateScope = $ext.StateScope
 $includePaths = @($projectConfig.includePaths)
 $excludeExtensions = @($projectConfig.excludeExtensions)
-$allowedAuthors = @($projectConfig.allowedAuthorEmails)
+$allowedAuthors = @($ext.AllowedAuthorEmails)
 $pathSpecs = @(Get-PathSpecs $includePaths $excludeExtensions)
 
 $distRoot = [string]$globalConfig.externalDistRoot
-$projectDistRoot = Join-Path (Join-Path (Join-Path $distRoot $ProjectName) $tagScope) $branchKey
+$projectDistRoot = Join-Path (Join-Path (Join-Path (Join-Path $distRoot $ProjectName) $tagScope) $partCodeResolved) $branchKey
 
 New-Item -ItemType Directory -Force -Path $projectDistRoot | Out-Null
 
@@ -438,6 +464,7 @@ try {
     Write-Host "Project : $ProjectName"
     Write-Host "Source  : $remote/$sourceBranch"
     Write-Host "Mode    : $tagScope"
+    Write-Host "Part    : $partCodeResolved"
     Write-Host "Branch  : $sourceBranch"
     Write-Host "State   : $ProjectName / $stateScope"
     Write-Host ""
@@ -502,6 +529,7 @@ Owner   : $ownerEmail
 Type=CLAIM
 Project=$ProjectName
 Mode=$tagScope
+PartCode=$partCodeResolved
 SourceBranch=$sourceBranch
 BranchKey=$branchKey
 StateScope=$stateScope
@@ -680,9 +708,10 @@ ClaimedAt=$((Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK"))
     Write-CommitInfo $selectedHashes $commitFile
 
     $manifest = [ordered]@{
-        version = "4.0"
+        version = "4.1"
         projectName = $ProjectName
         tagScope = $tagScope
+        partCode = $partCodeResolved
         stateScope = $stateScope
         branchKey = $branchKey
         sourceRemote = $remote
@@ -723,7 +752,7 @@ ClaimedAt=$((Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK"))
 
     # 보안 반입용 단일 ZIP 생성: ZIP 내부 파일명은 원래 형식/확장자를 노출하지 않는다.
     # manifest.txt, checksum.txt, commits.txt, reference.txt, patches/0001-<hash>.txt 형태만 사용한다.
-    $transportZipName = "transfer-$ProjectName-$tagScope-$branchKey-$freezeId.zip"
+    $transportZipName = "transfer-$ProjectName-$tagScope-$partCodeResolved-$branchKey-$freezeId.zip"
     $transportZip = Join-Path $projectDistRoot $transportZipName
     if (Test-Path -LiteralPath $transportZip) { Remove-Item -LiteralPath $transportZip -Force }
     Compress-Archive -Path (Join-Path $packageDir "*") -DestinationPath $transportZip -CompressionLevel Optimal
@@ -736,6 +765,7 @@ ClaimedAt=$((Get-Date).ToString("yyyy-MM-ddTHH:mm:ssK"))
     Write-Host "===================================================="
     Write-Host "Project : $ProjectName"
     Write-Host "Mode    : $tagScope"
+    Write-Host "Part    : $partCodeResolved"
     Write-Host "Branch  : $sourceBranch"
     Write-Host "Freeze  : $freezeId"
     Write-Host "From    : $fromCommit"

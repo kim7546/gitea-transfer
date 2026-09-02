@@ -1,5 +1,6 @@
-{
+﻿{
   "projectName": "s2b_admin",
+  "partCode": "MY_PART",
   "allowedAuthorEmails": [
     "kw010150@ktcu.or.kr"
   ],
@@ -30,8 +31,5 @@
     "mainBranch": "main",
     "importBranchPrefix": "feature/import-",
     "autoPush": true
-  },
-  "sparrow": {
-    "enabled": false
   }
 }

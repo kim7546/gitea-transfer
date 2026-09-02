@@ -1,0 +1,7 @@
+﻿v7.6.1
+- Part scope added to v7.6.
+- Each local Toolkit config knows only ONE part: partCode + allowedAuthorEmails.
+- No other part names/users are required in config.
+- Tags/state/package/import branch include partCode, so same project/mode/sourceBranch can run independently per part.
+- IntelliJ BAT invocation does NOT pass PartCode; scripts read it from project config.
+- Secure transfer ZIP/TXT packaging and internal ZIP-only import remain unchanged.

@@ -1,0 +1,26 @@
+[Toolkit v7.6.1 내부 03 운영 메모]
+
+1. BAT 두 번째 인수로 PartCode를 전달합니다.
+   03-import-package-test.bat "$ProjectFileDir$" "PART_A"
+
+2. 외부 ZIP 파일명에는 PartCode가 포함됩니다.
+   transfer-<project>-<mode>-<PartCode>-<branchKey>-<FreezeId>.zip
+
+3. ZIP을 직접 풀지 않습니다.
+   03이 internalInboundRoot를 재귀 검색하고 임시 폴더에 자동 해제합니다.
+
+4. manifest.txt의 project / mode / partCode / sourceBranch를 검증합니다.
+
+5. 최신 origin/main에서 Part별 Import Branch를 생성합니다.
+   feature/import-<project>-<mode>-<PartCode>-<branchKey>-<FreezeId>
+
+6. git am --3way CONFLICT가 나면 실제 내부 프로젝트의 Import Branch에서 해결합니다.
+   git status
+   IntelliJ Resolve Conflicts
+   git add <해결 파일>
+   git am --continue
+   모든 am 완료 후 같은 PartCode의 03 BAT 재실행
+
+7. ZIP 해제 임시 폴더는 Git Conflict 해결 장소가 아닙니다.
+
+8. reference.txt 차이는 WARNING일 수 있으며 실제 git am CONFLICT와 구분합니다.

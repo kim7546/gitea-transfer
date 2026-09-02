@@ -22,6 +22,29 @@ function Get-JsonFile {
     if (!(Test-Path -LiteralPath $Path)) { throw "설정 파일이 없습니다: $Path" }
     return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json)
 }
+function Get-PartSettings {
+    param([object]$ProjectConfig)
+
+    $code = [string]$ProjectConfig.partCode
+    if ([string]::IsNullOrWhiteSpace($code)) {
+        throw "프로젝트 config의 partCode가 비어 있습니다. 이 PC/Toolkit에서 사용하는 내 파트 코드 1개만 설정하세요."
+    }
+    $code = $code.Trim()
+    if ($code -notmatch '^[A-Za-z0-9._-]+$') {
+        throw "partCode는 영문/숫자/점/밑줄/하이픈만 사용할 수 있습니다: $code"
+    }
+
+    $allowed = @($ProjectConfig.allowedAuthorEmails)
+    if ($allowed.Count -eq 0) {
+        throw "프로젝트 config의 allowedAuthorEmails가 비어 있습니다. 내 파트 반입 대상 사용자 Email을 등록하세요."
+    }
+
+    return [pscustomobject]@{
+        Code = $code
+        AllowedAuthorEmails = $allowed
+    }
+}
+
 function Get-BranchKey {
     param([string]$BranchName)
     if ([string]::IsNullOrWhiteSpace($BranchName)) { throw "BranchName이 비어 있습니다." }
@@ -58,22 +81,25 @@ function Get-ExternalTransferSettings {
         throw "external.profiles.$modeKey.sourceBranch 설정이 없습니다."
     }
 
-    # 핵심: 상태 키는 Project + Mode + SourceBranch 이다.
-    # Git Tag에는 실제 브랜치명을 그대로 namespace로 사용하고,
-    # Windows 폴더/내부 import branch에는 안전한 BranchKey를 사용한다.
+    # v7.6.1: 상태 키는 Project + Mode + config.partCode + SourceBranch 이다.
+    # 같은 프로젝트/같은 브랜치여도 PartCode가 다르면 Freeze/Success/Claim이 완전히 독립적이다.
+    $part = Get-PartSettings $ProjectConfig
+    $partCodeResolved = [string]$part.Code
     $tagScope = $modeKey
     $branchKey = Get-BranchKey $sourceBranch
-    $stateScope = "$modeKey/$sourceBranch"
+    $stateScope = "$modeKey/$partCodeResolved/$sourceBranch"
 
     return [pscustomobject]@{
         Remote = $remote
         SourceBranch = $sourceBranch
         BranchKey = $branchKey
+        PartCode = $partCodeResolved
+        AllowedAuthorEmails = @($part.AllowedAuthorEmails)
         TagScope = $tagScope
         StateScope = $stateScope
-        FreezePrefix = "$([string]$GlobalConfig.tagPrefixes.freeze)$modeKey/$sourceBranch/"
-        SuccessPrefix = "$([string]$GlobalConfig.tagPrefixes.success)$modeKey/$sourceBranch/"
-        ClaimPrefix = "$([string]$GlobalConfig.tagPrefixes.claim)$modeKey/$sourceBranch/"
+        FreezePrefix = "$([string]$GlobalConfig.tagPrefixes.freeze)$modeKey/$partCodeResolved/$sourceBranch/"
+        SuccessPrefix = "$([string]$GlobalConfig.tagPrefixes.success)$modeKey/$partCodeResolved/$sourceBranch/"
+        ClaimPrefix = "$([string]$GlobalConfig.tagPrefixes.claim)$modeKey/$partCodeResolved/$sourceBranch/"
     }
 }
 
@@ -92,6 +118,7 @@ $sourceBranch = $ext.SourceBranch
 $tagScope = $ext.TagScope
 $branchKey = $ext.BranchKey
 $stateScope = $ext.StateScope
+$partCodeResolved = $ext.PartCode
 $successPrefix = $ext.SuccessPrefix
 
 Push-Location $ProjectRoot
@@ -102,6 +129,7 @@ try {
     Write-Host "===================================================="
     Write-Host "Project : $ProjectName"
     Write-Host "Mode    : $tagScope"
+    Write-Host "Part    : $partCodeResolved"
     Write-Host "Source  : $remote/$sourceBranch"
     Write-Host "State   : $ProjectName / $stateScope"
     Write-Host ""
@@ -118,7 +146,7 @@ try {
     $existing = @(& git tag -l "$successPrefix*")
     Assert-GitSuccess "Success Tag 조회 실패"
     if ($existing.Count -gt 0) {
-        throw "$ProjectName / $stateScope 에 이미 Success Tag가 존재합니다. 00은 프로젝트+Mode+Branch별 최초 1회만 실행합니다."
+        throw "$ProjectName / $stateScope 에 이미 Success Tag가 존재합니다. 00은 프로젝트+Mode+Part+Branch별 최초 1회만 실행합니다."
     }
 
     $head = (& git rev-parse "refs/remotes/$remote/$sourceBranch").Trim()
@@ -131,6 +159,7 @@ try {
 Type=BASELINE
 Project=$ProjectName
 Mode=$tagScope
+PartCode=$partCodeResolved
 SourceBranch=$sourceBranch
 BranchKey=$branchKey
 StateScope=$stateScope
