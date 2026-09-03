@@ -1,4 +1,5 @@
 {
+  "profile": "test",
   "externalDistRoot": "C:\\workspace\\gitea-transfer\\dist",
   "internalInboundRoot": "C:\\workspace\\gitea-transfer\\inbound",
   "tagPrefixes": {

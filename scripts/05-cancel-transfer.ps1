@@ -303,50 +303,48 @@ $freezePrefix = $ext.FreezePrefix
 $successPrefix = $ext.SuccessPrefix
 $claimPrefix = $ext.ClaimPrefix
 $remote = $ext.Remote
-$sourceBranch = $ext.SourceBranch
-$tagScope = $ext.TagScope
-$partCodeResolved = $ext.PartCode
-$branchKey = $ext.BranchKey
 $stateScope = $ext.StateScope
 
 Push-Location $ProjectRoot
-
 try {
     & git fetch $remote --tags --prune
     Assert-GitSuccess "git fetch 실패"
 
     $freezeTag = Get-ActiveFreezeTag $freezePrefix $successPrefix
     $freezeId = Get-TagId $freezeTag $freezePrefix
-    $successTag = "$successPrefix$freezeId"
-
-    $alreadySuccess = Get-RemoteTagExists $remote $successTag
-
     $claimTag = "$claimPrefix$freezeId"
 
-    if (!(Get-RemoteTagExists $remote $claimTag)) {
-        Write-Host "Claim Tag가 없습니다: $claimTag"
-        return
-    }
-
-    Fetch-OneTag $remote $claimTag
-    $message = Get-TagMessage $claimTag
-
     Write-Host ""
-    Write-Host "삭제할 Claim:"
-    Write-Host $message
+    Write-Host "[05 CANCEL TRANSFER]"
+    Write-Host "Project : $ProjectName"
+    Write-Host "Scope   : $stateScope"
+    Write-Host "Freeze  : $freezeTag"
+    Write-Host "Claim   : $claimTag"
     Write-Host ""
 
-    & git push $remote ":refs/tags/$claimTag"
-    Assert-GitSuccess "Remote Claim Tag 삭제 실패"
-
-    Remove-LocalTagIfExists $claimTag
-
-    Write-Host "CLAIM RELEASED : $ProjectName / $stateScope / $freezeId"
-    if ($alreadySuccess) {
-        Write-Host "Success는 이미 완료되어 있으며 남아 있던 Claim만 정리했습니다."
+    # Claim은 존재할 때만 삭제한다.
+    if (Get-RemoteTagExists $remote $claimTag) {
+        & git push $remote ":refs/tags/$claimTag"
+        Assert-GitSuccess "Remote Claim Tag 삭제 실패"
+        Remove-LocalTagIfExists $claimTag
+        Write-Host "Claim  삭제 완료"
     } else {
-        Write-Host "다른 반입담당자가 다시 Claim할 수 있습니다."
+        Write-Host "Claim  없음 - 건너뜀"
+        Remove-LocalTagIfExists $claimTag
     }
+
+    # 현재 회차 Freeze를 삭제하여 외부 수정 Commit 후 01부터 새 Freeze를 만들 수 있게 한다.
+    if (Get-RemoteTagExists $remote $freezeTag) {
+        & git push $remote ":refs/tags/$freezeTag"
+        Assert-GitSuccess "Remote Freeze Tag 삭제 실패"
+    }
+    Remove-LocalTagIfExists $freezeTag
+    Write-Host "Freeze 삭제 완료"
+    Write-Host "Success Tag는 변경하지 않았습니다."
+    Write-Host ""
+    Write-Host "CANCELLED : $ProjectName / $stateScope / $freezeId"
+    Write-Host "외부 소스를 수정/Commit한 뒤 01 Freeze부터 다시 실행하세요."
+    Write-Host "기존 실패 ZIP은 외부 dist와 내부 inbound에서 삭제하세요."
 }
 finally {
     Pop-Location

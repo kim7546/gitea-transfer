@@ -1,8 +1,12 @@
 ﻿{
   "projectName": "s2b_sell",
-  "partCode": "MY_PART",
+  "partCode": "CS",
   "allowedAuthorEmails": [
-    "kw010150@ktcu.or.kr"
+    "kw010151@ktcu.or.kr",
+    "kw010150@ktcu.or.kr",
+    "kw010108@ktcu.or.kr",
+    "kw010129@ktcu.or.kr",
+    "kw010119@ktcu.or.kr"
   ],
   "includePaths": [
     "src/main/java",
