@@ -34,6 +34,16 @@
     "remote": "origin",
     "mainBranch": "main",
     "importBranchPrefix": "feature/import-",
-    "autoPush": true
+    "autoPush": false,
+    "sparrow": {
+      "enabled": true,
+      "cliPath": "C:\\Sparrow\\sparrow-enterprise-client-windows-2605.2\\sparrow-cli.cmd",
+      "server": "https://SPARROW-SERVER:10880",
+      "user": "YOUR_USER_ID",
+      "passwordFile": "C:\\gitea-transfer\\config\\sparrow-password.txt",
+      "projectKey": "s2b_admin",
+      "profile": "내 작업 프로파일",
+      "analysisType": "full"
+    }
   }
 }
